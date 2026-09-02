@@ -1199,6 +1199,7 @@
   "warning_errors_detected_2": "有些错误是暂时性的（例如启用 LED 自动重连时），可以忽略；其他错误可能表示存在严重的系统配置或运行冲突。<br/>请前往日志页面并重点排查标红的错误：",
   "modal_old_password": "旧密码",
   "modal_new_password": "新密码",
+  "edt_append_frames": "Frames",
   "LUT_selector": "LUT 配置文件",
   "preview_live_video_is_paused": "实时视频预览已暂停",
   "preview_no_signal": "无视频信号",
