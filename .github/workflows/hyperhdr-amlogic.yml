@@ -102,31 +102,16 @@ jobs:
           restore-keys: |
             amlogic-${{ env.DEVICE }}-${{ env.ARCH }}-
 
-      - name: Pre-fetch flaky sources (gmp)
+      - name: Patch CE21 buildroot for a modern host
         working-directory: buildroot
         run: |
           set -eux
-          mkdir -p sources/gmp
-          f=sources/gmp/gmp-6.3.0.tar.xz
-          if [ ! -s "$f" ]; then
-            for u in \
-              https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz \
-              https://mirrors.kernel.org/gnu/gmp/gmp-6.3.0.tar.xz \
-              https://ftpmirror.gnu.org/gmp/gmp-6.3.0.tar.xz ; do
-              if wget -q -O "$f" "$u"; then echo "got gmp from $u"; break; fi
-              rm -f "$f"
-            done
-          fi
-          test -s "$f"
-          sha256sum "$f"
-
-      - name: Relax glibc -Werror (CE21 snapshot vs newer gcc)
-        working-directory: buildroot
-        run: |
-          set -eux
-          f=packages/devel/glibc/package.mk
-          sed -i 's/-fno-stack-protector"/-fno-stack-protector -Wno-error"/' "$f"
-          grep -n 'fno-stack-protector' "$f"
+          # gmplib.org blocks/times-out CI; CE + LE mirrors 404 it. Use GNU's mirror (same tarball, same sha256).
+          sed -i 's#https://gmplib.org/download/gmp/#https://ftp.gnu.org/gnu/gmp/#' packages/devel/gmp/package.mk
+          grep -n PKG_URL packages/devel/gmp/package.mk
+          # CE21's glibc snapshot trips -Werror=return-type on newer gcc
+          sed -i 's/-fno-stack-protector"/-fno-stack-protector -Wno-error"/' packages/devel/glibc/package.mk
+          grep -n 'fno-stack-protector' packages/devel/glibc/package.mk
 
       - name: Build the cross toolchain
         working-directory: buildroot
