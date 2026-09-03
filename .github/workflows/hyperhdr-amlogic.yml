@@ -96,9 +96,19 @@ jobs:
           path: |
             buildroot/sources
             buildroot/.ccache
+            buildroot/build.*/toolchain
+            buildroot/build.*/build/toolchain
           key: amlogic-${{ env.DEVICE }}-${{ env.ARCH }}-${{ hashFiles('HyperHDR/contrib/amlogic/package.mk') }}
           restore-keys: |
             amlogic-${{ env.DEVICE }}-${{ env.ARCH }}-
+
+      - name: Build the cross toolchain
+        working-directory: buildroot
+        run: |
+          set -eux
+          export CCACHE_DIR="$PWD/.ccache"
+          PROJECT="$PROJECT" DEVICE="$DEVICE" ARCH="$ARCH" \
+            scripts/build toolchain
 
       - name: Build the HyperHDR add-on
         working-directory: buildroot
