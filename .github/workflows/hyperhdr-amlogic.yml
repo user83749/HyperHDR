@@ -101,12 +101,15 @@ jobs:
           grep -n 'disable-werror' packages/devel/glibc/package.mk
 
       - name: Restore build cache
-        uses: actions/cache@v4
+        id: cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             buildroot/sources
             buildroot/.ccache
-          key: amlogic-${{ env.DEVICE }}-${{ env.ARCH }}-${{ hashFiles('HyperHDR/contrib/amlogic/package.mk') }}
+            buildroot/build.*/toolchain
+            buildroot/build.*/.stamps
+          key: amlogic-${{ env.DEVICE }}-${{ env.ARCH }}-${{ github.run_id }}
           restore-keys: |
             amlogic-${{ env.DEVICE }}-${{ env.ARCH }}-
 
@@ -129,6 +132,22 @@ jobs:
         if: always()
         working-directory: buildroot
         run: sudo chown -R "$(id -u):$(id -g)" . || true
+
+      - name: Show build tree layout
+        if: always()
+        working-directory: buildroot
+        run: du -sh build.*/* 2>/dev/null | sort -h | tail -20 || true
+
+      - name: Save build cache
+        if: always() && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            buildroot/sources
+            buildroot/.ccache
+            buildroot/build.*/toolchain
+            buildroot/build.*/.stamps
+          key: amlogic-${{ env.DEVICE }}-${{ env.ARCH }}-${{ github.run_id }}
 
       - name: Dump buildroot failure logs
         if: failure()
