@@ -39,7 +39,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 350
     env:
       BUILDROOT_REF: ${{ github.event.inputs.buildroot_ref || 'coreelec-21' }}
