@@ -102,6 +102,24 @@ jobs:
           restore-keys: |
             amlogic-${{ env.DEVICE }}-${{ env.ARCH }}-
 
+      - name: Pre-fetch flaky sources (gmp)
+        working-directory: buildroot
+        run: |
+          set -eux
+          mkdir -p sources/gmp
+          f=sources/gmp/gmp-6.3.0.tar.xz
+          if [ ! -s "$f" ]; then
+            for u in \
+              https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz \
+              https://mirrors.kernel.org/gnu/gmp/gmp-6.3.0.tar.xz \
+              https://ftpmirror.gnu.org/gmp/gmp-6.3.0.tar.xz ; do
+              if wget -q -O "$f" "$u"; then echo "got gmp from $u"; break; fi
+              rm -f "$f"
+            done
+          fi
+          test -s "$f"
+          sha256sum "$f"
+
       - name: Build the cross toolchain
         working-directory: buildroot
         run: |
