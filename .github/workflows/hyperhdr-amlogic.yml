@@ -108,6 +108,23 @@ jobs:
           PROJECT="$PROJECT" DEVICE="$DEVICE" ARCH="$ARCH" \
             scripts/create_addon hyperhdr
 
+      - name: Dump buildroot failure logs
+        if: failure()
+        run: |
+          cd buildroot || exit 0
+          d=$(ls -d build.*/.threads/logs 2>/dev/null | head -1)
+          echo "logs dir: $d"
+          [ -z "$d" ] && { echo "no logs dir"; exit 0; }
+          for f in "$d"/*.log; do
+            if grep -qiE "error:|cannot create executables|No such file|Can't locate|Error [0-9]+$|configure: error" "$f" 2>/dev/null; then
+              echo "=================================================================="
+              echo "=== $f"
+              echo "=================================================================="
+              tail -n 120 "$f"
+              echo
+            fi
+          done
+
       - name: Collect the add-on zip
         run: |
           set -eux
