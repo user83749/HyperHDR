@@ -46,6 +46,7 @@ jobs:
       PROJECT: ${{ github.event.inputs.project || 'Amlogic-ce' }}
       DEVICE: ${{ github.event.inputs.device || 'Amlogic-ne' }}
       ARCH: ${{ github.event.inputs.arch || 'arm' }}
+      HYPERHDR_REF: ${{ github.ref_name }}
 
     steps:
       - name: Maximise free disk space
@@ -78,6 +79,11 @@ jobs:
           cp ../HyperHDR/contrib/amlogic/package.mk "$dst/package.mk"
           sha="$(git -C ../HyperHDR rev-parse HEAD)"
           sed -i "s#^PKG_VERSION=.*#PKG_VERSION=\"${sha}\"#" "$dst/package.mk"
+          # our commit lives on amdelay-build / a tag, not the fork's default branch
+          {
+            echo "PKG_GIT_CLONE_BRANCH=\"${HYPERHDR_REF}\""
+            echo "PKG_GIT_CLONE_SINGLE=\"yes\""
+          } >> "$dst/package.mk"
           # CE's source mirror 404s many GNU tarballs and gmplib.org / ftpmirror.gnu.org
           # are flaky from CI. Repoint every GNU-hosted source at ftp.gnu.org (complete + reliable).
           grep -rlE 'gmplib\.org|ftpmirror\.gnu\.org|ftp\.gnu\.org' packages/ 2>/dev/null | while read -r p; do
