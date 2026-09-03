@@ -168,13 +168,19 @@ jobs:
         run: du -sh build.*/* 2>/dev/null | sort -h | tail -20 || true
 
       - name: Publish prebuilt toolchain (durable fallback that never expires)
-        if: success() && steps.tc.outputs.have == 'no'
+        if: success()
         working-directory: buildroot
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eux
           base="toolchain-${BUILDROOT_REF}-${DEVICE}-${ARCH}.tar.zst"
+          have_asset="$(gh release view build-cache -R "$GITHUB_REPOSITORY" --json assets \
+                         -q '.assets[].name' 2>/dev/null | grep -c "^${base}.part-" || true)"
+          # upload when we just built the toolchain, or when no asset exists yet
+          if [ "${{ steps.tc.outputs.have }}" = "yes" ] && [ "${have_asset:-0}" -gt 0 ]; then
+            echo "durable toolchain asset already present - nothing to do"; exit 0
+          fi
           paths="$(ls -d sources build.*/toolchain build.*/.stamps 2>/dev/null)"
           tar --use-compress-program='zstd -19 -T0' -cf - $paths \
             | split -b 1900m - "/tmp/${base}.part-"
