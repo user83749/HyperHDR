@@ -120,6 +120,14 @@ jobs:
           test -s "$f"
           sha256sum "$f"
 
+      - name: Relax glibc -Werror (CE21 snapshot vs newer gcc)
+        working-directory: buildroot
+        run: |
+          set -eux
+          f=packages/devel/glibc/package.mk
+          sed -i 's/-fno-stack-protector"/-fno-stack-protector -Wno-error"/' "$f"
+          grep -n 'fno-stack-protector' "$f"
+
       - name: Build the cross toolchain
         working-directory: buildroot
         run: |
