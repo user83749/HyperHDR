@@ -80,7 +80,11 @@ jobs:
           sed -i "s#^PKG_VERSION=.*#PKG_VERSION=\"${sha}\"#" "$dst/package.mk"
           # gmplib.org is unreliable; use GNU's mirror (identical tarball + sha256)
           sed -i 's#https://gmplib.org/download/gmp/#https://ftp.gnu.org/gnu/gmp/#' packages/devel/gmp/package.mk
-          cat "$dst/package.mk"; grep -n PKG_URL packages/devel/gmp/package.mk
+          # the buildroot's own cross-gcc is 13.2.0; CE21's glibc snapshot trips -Werror=return-type
+          sed -i 's/-fno-stack-protector"/-fno-stack-protector -Wno-error"/' packages/devel/glibc/package.mk
+          cat "$dst/package.mk"
+          grep -n PKG_URL packages/devel/gmp/package.mk
+          grep -n 'fno-stack-protector' packages/devel/glibc/package.mk
 
       - name: Restore build cache
         uses: actions/cache@v4
