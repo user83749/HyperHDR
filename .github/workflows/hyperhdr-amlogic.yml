@@ -112,11 +112,10 @@ jobs:
           path: |
             buildroot/sources
             buildroot/.ccache
-            buildroot/build.*/toolchain
-            buildroot/build.*/.stamps
-          key: amlogic-${{ env.DEVICE }}-${{ env.ARCH }}-${{ github.run_id }}
+            buildroot/build.*
+          key: amlogic-v2-${{ env.DEVICE }}-${{ env.ARCH }}-${{ github.run_id }}
           restore-keys: |
-            amlogic-${{ env.DEVICE }}-${{ env.ARCH }}-
+            amlogic-v2-${{ env.DEVICE }}-${{ env.ARCH }}-
 
       - name: Fetch prebuilt toolchain (durable fallback that never expires)
         id: tc
@@ -181,7 +180,7 @@ jobs:
           if [ "${{ steps.tc.outputs.have }}" = "yes" ] && [ "${have_asset:-0}" -gt 0 ]; then
             echo "durable toolchain asset already present - nothing to do"; exit 0
           fi
-          paths="$(ls -d sources build.*/toolchain build.*/.stamps 2>/dev/null)"
+          paths="$(ls -d sources build.* 2>/dev/null)"
           tar --use-compress-program='zstd -19 -T0' -cf - $paths \
             | split -b 1900m - "/tmp/${base}.part-"
           ls -la /tmp/${base}.part-*
@@ -195,6 +194,13 @@ jobs:
           done
           gh release upload build-cache -R "$GITHUB_REPOSITORY" /tmp/${base}.part-* --clobber
 
+      - name: Trim per-commit build dirs before caching
+        if: always()
+        working-directory: buildroot
+        run: |
+          rm -rf build.*/build/hyperhdr-* build.*/install_pkg/hyperhdr-* \
+                 build.*/image build.*/*-release 2>/dev/null || true
+
       - name: Save build cache
         if: always() && steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -202,9 +208,8 @@ jobs:
           path: |
             buildroot/sources
             buildroot/.ccache
-            buildroot/build.*/toolchain
-            buildroot/build.*/.stamps
-          key: amlogic-${{ env.DEVICE }}-${{ env.ARCH }}-${{ github.run_id }}
+            buildroot/build.*
+          key: amlogic-v2-${{ env.DEVICE }}-${{ env.ARCH }}-${{ github.run_id }}
 
       - name: Dump buildroot failure logs
         if: failure()
