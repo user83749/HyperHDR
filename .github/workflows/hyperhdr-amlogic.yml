@@ -51,20 +51,9 @@ jobs:
       - name: Maximise free disk space
         run: |
           sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet \
-                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
-          sudo docker image prune --all --force || true
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+                      /usr/local/lib/node_modules /opt/az || true
           df -h /
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            gcc g++ make git wget curl xz-utils lzip lzop bc gperf zip unzip \
-            xfonts-utils default-jre-headless python3 python-is-python3 \
-            patchelf file rsync bsdmainutils cpio flex bison texinfo \
-            libjson-perl libxml-parser-perl libxml-dumper-perl \
-            libparse-yapp-perl rdfind xsltproc patchutils \
-            libncurses-dev libssl-dev gawk
 
       - name: Check out the Amlogic build system
         uses: actions/checkout@v4
@@ -80,15 +69,18 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Apply the HyperHDR package recipe
+      - name: Apply the HyperHDR package recipe + buildroot patches
+        working-directory: buildroot
         run: |
           set -eux
-          dst=buildroot/packages/addons/service/hyperhdr
+          dst=packages/addons/service/hyperhdr
           mkdir -p "$dst"
-          cp HyperHDR/contrib/amlogic/package.mk "$dst/package.mk"
-          sha="$(git -C HyperHDR rev-parse HEAD)"
+          cp ../HyperHDR/contrib/amlogic/package.mk "$dst/package.mk"
+          sha="$(git -C ../HyperHDR rev-parse HEAD)"
           sed -i "s#^PKG_VERSION=.*#PKG_VERSION=\"${sha}\"#" "$dst/package.mk"
-          echo "---- effective package.mk ----"; cat "$dst/package.mk"
+          # gmplib.org is unreliable; use GNU's mirror (identical tarball + sha256)
+          sed -i 's#https://gmplib.org/download/gmp/#https://ftp.gnu.org/gnu/gmp/#' packages/devel/gmp/package.mk
+          cat "$dst/package.mk"; grep -n PKG_URL packages/devel/gmp/package.mk
 
       - name: Restore build cache
         uses: actions/cache@v4
@@ -96,65 +88,51 @@ jobs:
           path: |
             buildroot/sources
             buildroot/.ccache
-            buildroot/build.*/toolchain
-            buildroot/build.*/build/toolchain
           key: amlogic-${{ env.DEVICE }}-${{ env.ARCH }}-${{ hashFiles('HyperHDR/contrib/amlogic/package.mk') }}
           restore-keys: |
             amlogic-${{ env.DEVICE }}-${{ env.ARCH }}-
 
-      - name: Patch CE21 buildroot for a modern host
+      - name: Build the container image (CoreELEC's own, Ubuntu 22.04 / gcc-12)
         working-directory: buildroot
-        run: |
-          set -eux
-          # gmplib.org blocks/times-out CI; CE + LE mirrors 404 it. Use GNU's mirror (same tarball, same sha256).
-          sed -i 's#https://gmplib.org/download/gmp/#https://ftp.gnu.org/gnu/gmp/#' packages/devel/gmp/package.mk
-          grep -n PKG_URL packages/devel/gmp/package.mk
-          # CE21's glibc snapshot trips -Werror=return-type on newer gcc
-          sed -i 's/-fno-stack-protector"/-fno-stack-protector -Wno-error"/' packages/devel/glibc/package.mk
-          grep -n 'fno-stack-protector' packages/devel/glibc/package.mk
+        run: docker build --pull -t ceb tools/docker/jammy
 
-      - name: Build the cross toolchain
+      - name: Build toolchain + HyperHDR add-on in the container
         working-directory: buildroot
         run: |
           set -eux
-          export CCACHE_DIR="$PWD/.ccache"
-          PROJECT="$PROJECT" DEVICE="$DEVICE" ARCH="$ARCH" \
-            scripts/build toolchain
+          # the image's build user is 'docker' (uid 1000); match ownership of the mount
+          sudo chown -R 1000:1000 .
+          docker run --rm -v "$PWD":/build -w /build \
+            -e PROJECT="$PROJECT" -e DEVICE="$DEVICE" -e ARCH="$ARCH" \
+            -e CCACHE_DIR=/build/.ccache \
+            ceb bash -c 'set -e; ./scripts/build toolchain && ./scripts/create_addon hyperhdr'
 
-      - name: Build the HyperHDR add-on
+      - name: Restore ownership
+        if: always()
         working-directory: buildroot
-        run: |
-          set -eux
-          export CCACHE_DIR="$PWD/.ccache"
-          PROJECT="$PROJECT" DEVICE="$DEVICE" ARCH="$ARCH" \
-            scripts/create_addon hyperhdr
+        run: sudo chown -R "$(id -u):$(id -g)" . || true
 
       - name: Dump buildroot failure logs
         if: failure()
+        working-directory: buildroot
         run: |
-          cd buildroot || exit 0
           d=$(ls -d build.*/.threads/logs 2>/dev/null | head -1)
           echo "logs dir: $d"
           [ -z "$d" ] && { echo "no logs dir"; exit 0; }
           for f in "$d"/*.log; do
-            if grep -qiE "error:|cannot create executables|No such file|Can't locate|Error [0-9]+$|configure: error" "$f" 2>/dev/null; then
-              echo "=================================================================="
-              echo "=== $f"
-              echo "=================================================================="
-              tail -n 120 "$f"
-              echo
+            if grep -qiE "error:|cannot create executables|No such file|Can't locate|configure: error" "$f" 2>/dev/null; then
+              echo "=== $f ==="; tail -n 150 "$f"; echo
             fi
           done
 
       - name: Collect the add-on zip
+        working-directory: buildroot
         run: |
           set -eux
-          mkdir -p out
-          # published name must be  service.hyperhdr-<version>.zip  -> keep it
-          find buildroot -type f -name 'service.hyperhdr-*.zip' \
-            -not -name '*-Amlogic*' -exec cp -v {} out/ \;
-          ls -la out
-          test -n "$(ls out/*.zip 2>/dev/null)"
+          mkdir -p ../out
+          find . -type f -name 'service.hyperhdr-*.zip' -not -name '*-Amlogic*' -exec cp -v {} ../out/ \;
+          ls -la ../out
+          test -n "$(ls ../out/*.zip 2>/dev/null)"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -169,10 +147,8 @@ jobs:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'ci' }}
           name: ${{ startsWith(github.ref, 'refs/tags/') && format('HyperHDR {0}', github.ref_name) || 'HyperHDR 22.0.0 (latest build)' }}
           body: |
-            HyperHDR 22.0.0 with an experimental smoothing frame-delay
-            (`updateDelay`). `service.hyperhdr-22.0.0.zip` targets 32-bit ARM
-            Amlogic.
-
+            HyperHDR 22.0.0 with an experimental smoothing frame-delay (`updateDelay`).
+            `service.hyperhdr-22.0.0.zip` targets 32-bit ARM Amlogic.
             Built from `${{ github.sha }}`.
           files: out/*.zip
           draft: false
